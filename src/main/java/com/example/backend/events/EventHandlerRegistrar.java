@@ -1,7 +1,5 @@
 package com.example.backend.events;
 
-import com.example.backend.events.EventBus;
-import com.example.backend.events.EventHandler;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

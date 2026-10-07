@@ -2,7 +2,6 @@ package com.example.backend.projections;
 
 import com.example.backend.events.DomainEvent;
 import com.example.backend.events.EventBus;
-import com.example.backend.events.EventHandler;
 import com.example.backend.events.EventStore;
 import com.example.backend.repositories.HistoryEntryRepository;
 import com.example.backend.repositories.SessionProjectionRepository;
