@@ -52,7 +52,7 @@ public class MongoEventStore implements EventStore {
             long actualVersion = eventRepository
                     .findTopByAggregateIdOrderByVersionDesc(aggregateId)
                     .map(DomainEvent::getVersion)
-                    .orElse(-1L);
+                    .orElse(0L);
 
             throw new ConcurrencyException(aggregateId, expectedVersion, actualVersion);
         }

@@ -38,7 +38,7 @@ public class TransactionalEventInserter {
         long currentVersion = eventRepository
                 .findTopByAggregateIdOrderByVersionDesc(aggregateId)
                 .map(DomainEvent::getVersion)
-                .orElse(-1L);
+                .orElse(0L);
 
         if (currentVersion != expectedVersion) {
             if (expectedVersion == 0 && currentVersion >= 1) {
