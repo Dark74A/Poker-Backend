@@ -1341,7 +1341,3 @@ Testing / Testcontainers
 The result is a backend that separates authentication, API handling, poker-domain logic, persistence, and real-time communication while providing a foundation for scalable multiplayer gameplay.
 
 ---
-
-## 🔗 Repository
-
-[https://github.com/Dark74A/Poker-Backend](https://github.com/Dark74A/Poker-Backend)
