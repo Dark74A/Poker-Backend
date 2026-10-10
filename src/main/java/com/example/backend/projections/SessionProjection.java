@@ -2,6 +2,7 @@ package com.example.backend.projections;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.index.Indexed;
 
 import java.time.Instant;
 import java.util.List;
@@ -16,6 +17,8 @@ public class SessionProjection {
     private String sessionId;
     private String sessionName;
     private String hostId;
+    @Indexed(unique = true, sparse = true)
+    private String inviteCode;
     private String status;
     private Instant createdAt;
     private Instant updatedAt;

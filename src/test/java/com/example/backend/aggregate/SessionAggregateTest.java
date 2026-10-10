@@ -93,10 +93,12 @@ class SessionAggregateTest {
             switch (command) {
                 case CreateSessionCommand c -> aggregate.handle(c);
                 case AddPlayerCommand c -> aggregate.handle(c);
+                case JoinSessionCommand c -> aggregate.handle(c);
                 case AddBuyInCommand c -> aggregate.handle(c);
                 case AddCashOutCommand c -> aggregate.handle(c);
                 case RecordHandCommand c -> aggregate.handle(c);
                 case RemovePlayerCommand c -> aggregate.handle(c);
+                case LeaveSessionCommand c -> aggregate.handle(c);
                 case CloseSessionCommand c -> aggregate.handle(c);
                 case ArchiveSessionCommand c -> aggregate.handle(c);
                 case ReopenSessionCommand c -> aggregate.handle(c);
@@ -147,6 +149,28 @@ class SessionAggregateTest {
             blank.handleExpectingThrow(
                     new AddPlayerCommand(UUID.randomUUID().toString(), HOST_ID, null, "Raj"),
                     SessionNotFoundException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("JoinSessionCommand")
+    class JoinSession {
+        @Test
+        @DisplayName("joins an active session as a linked account player")
+        void joinsSession() {
+            fixture.handle(new JoinSessionCommand(sessionId, "player-user", "PlayerName"));
+            assertThat(fixture.lastEvent().getEventType()).isEqualTo("PlayerAdded");
+            assertThat(fixture.lastEvent().getPayload())
+                    .containsEntry("linkedUserId", "player-user")
+                    .containsEntry("displayName", "PlayerName");
+        }
+
+        @Test
+        @DisplayName("rejects joining a closed session")
+        void rejectsClosedSession() {
+            fixture.handle(new CloseSessionCommand(sessionId, HOST_ID));
+            fixture.handleExpectingThrow(new JoinSessionCommand(sessionId, "player-user", "PlayerName"),
+                    InvalidSessionStateException.class);
         }
     }
 
@@ -343,6 +367,7 @@ class SessionAggregateTest {
         void removesActivePlayer() {
             fixture.handle(new RemovePlayerCommand(sessionId, HOST_ID, playerId));
             assertThat(fixture.lastEvent().getEventType()).isEqualTo("PlayerRemoved");
+            assertThat(fixture.aggregate.getPlayers().get(playerId).status().name()).isEqualTo("INACTIVE");
         }
 
         @Test
@@ -352,6 +377,35 @@ class SessionAggregateTest {
             fixture.handleExpectingThrow(
                     new RemovePlayerCommand(sessionId, HOST_ID, playerId),
                     InvalidSessionStateException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("LeaveSessionCommand")
+    class LeaveSession {
+        @Test
+        @DisplayName("allows a linked player to leave with an empty stack")
+        void leavesWithEmptyStack() {
+            fixture.handle(new AddPlayerCommand(sessionId, HOST_ID, "player-user", "Player"));
+            String playerId = fixture.lastPayloadValue("playerId");
+
+            fixture.handle(new LeaveSessionCommand(sessionId, "player-user"));
+
+            assertThat(fixture.lastEvent().getEventType()).isEqualTo("PlayerRemoved");
+            assertThat(fixture.lastEvent().getPayload()).containsEntry("playerId", playerId);
+            assertThat(fixture.aggregate.getPlayers().get(playerId).status().name()).isEqualTo("INACTIVE");
+        }
+
+        @Test
+        @DisplayName("rejects leaving while the player's stack is nonempty")
+        void rejectsNonemptyStack() {
+            fixture.handle(new AddPlayerCommand(sessionId, HOST_ID, "player-user", "Player"));
+            String playerId = fixture.lastPayloadValue("playerId");
+            fixture.handle(new AddBuyInCommand(sessionId, HOST_ID, Map.of(playerId, new BigDecimal("25"))));
+
+            assertThatThrownBy(() -> fixture.handle(new LeaveSessionCommand(sessionId, "player-user")))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("stack is not empty");
         }
     }
 }

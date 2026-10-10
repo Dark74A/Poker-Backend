@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 
 public record PlayerResponse(
         String playerId,
+        String userId,
         String displayName,
         BigDecimal totalBuyIn,
         BigDecimal totalCashOut,

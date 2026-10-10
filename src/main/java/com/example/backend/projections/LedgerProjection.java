@@ -104,6 +104,9 @@ public class LedgerProjection implements EventHandler {
                 .setOnInsert("updatedAt", event.getTimestamp())
                 .setOnInsert("lastAppliedVersion", event.getVersion())
                 .setOnInsert("players", java.util.List.of());
+        if (payload.get("inviteCode") != null) {
+            update.setOnInsert("inviteCode", payload.get("inviteCode"));
+        }
 
         var result = mongoTemplate.upsert(query, update, SessionProjection.class);
 

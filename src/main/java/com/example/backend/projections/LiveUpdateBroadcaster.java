@@ -5,10 +5,9 @@ import com.example.backend.events.EventHandler;
 import com.example.backend.events.EventType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.util.Map;
 import java.util.Set;
 
 @Component
@@ -16,7 +15,9 @@ import java.util.Set;
 @Slf4j
 public class LiveUpdateBroadcaster implements EventHandler {
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final StringRedisTemplate redisTemplate;
+
+    public static final String REDIS_CHANNEL = "poker-ledger.session-updates";
 
     private static final Set<String> MUTATING_EVENTS = Set.of(
             EventType.PLAYER_ADDED,
@@ -49,14 +50,8 @@ public class LiveUpdateBroadcaster implements EventHandler {
         if (MUTATING_EVENTS.contains(event.getEventType())) {
             log.debug("Broadcasting live update for session {} event {}", event.getAggregateId(), event.getEventType());
             
-            Map<String, Object> payload = Map.of(
-                    "type", event.getEventType(),
-                    "version", event.getVersion()
-            );
-            
-            String destination = "/topic/sessions/" + event.getAggregateId();
-
-            messagingTemplate.convertAndSend(destination, (Object) payload);
+            redisTemplate.convertAndSend(REDIS_CHANNEL,
+                    event.getAggregateId() + "\n" + event.getEventType() + "\n" + event.getVersion());
         }
     }
 }

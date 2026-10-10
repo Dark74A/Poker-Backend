@@ -123,13 +123,13 @@ This allows tests to run against an actual MongoDB container instead of relying 
 
 ### Docker Support
 
-The repository includes a Dockerfile based on:
+The repository includes a multi-stage Dockerfile that builds with Maven and runs on:
 
 ```text
-eclipse-temurin:21-jdk
+eclipse-temurin:21-jre
 ```
 
-The image builds the application using the Maven wrapper and runs the generated Spring Boot JAR.
+The image builds the application using the Maven wrapper and runs the generated Spring Boot JAR. Use `docker compose up --build` from the repository root to run the local two-instance deployment with Nginx, MongoDB, and Redis.
 
 ---
 
@@ -759,7 +759,7 @@ Spring Boot JAR
 Run application
 ```
 
-The repository's current Dockerfile uses `eclipse-temurin:21-jdk`, builds with `./mvnw clean package -DskipTests`, and launches the resulting JAR.
+The repository's current multi-stage Dockerfile builds with Maven and launches the resulting JAR on `eclipse-temurin:21-jre`.
 
 ---
 
@@ -1230,7 +1230,7 @@ Potential improvements for the project include:
 - [ ] Event replay functionality
 - [ ] Persistent poker hand history
 - [ ] Distributed WebSocket messaging
-- [ ] Redis integration for shared real-time state
+- [x] Redis Pub/Sub integration for shared real-time updates across local backend instances
 - [ ] Rate limiting
 - [ ] Refresh-token authentication
 - [ ] Improved observability

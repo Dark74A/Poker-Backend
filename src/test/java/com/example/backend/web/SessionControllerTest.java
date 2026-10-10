@@ -7,6 +7,9 @@ import com.example.backend.handlers.*;
 import com.example.backend.helpers.CurrentUserProvider;
 import com.example.backend.helpers.IdGenerator;
 import com.example.backend.projections.ProjectionRebuilder;
+import com.example.backend.projections.SessionProjection;
+import com.example.backend.projections.PlayerProjection;
+import com.example.backend.model.User;
 import com.example.backend.repositories.HistoryEntryRepository;
 import com.example.backend.repositories.SessionProjectionRepository;
 import com.example.backend.repositories.SessionRepository;
@@ -18,11 +21,14 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-
+import com.example.backend.commands.LeaveSessionCommand;
 import java.util.Optional;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -47,6 +53,8 @@ class SessionControllerTest {
     @MockitoBean private IdGenerator idGenerator;
     @MockitoBean private CreateSessionHandler createSessionHandler;
     @MockitoBean private AddPlayerHandler addPlayerHandler;
+    @MockitoBean private JoinSessionHandler joinSessionHandler;
+    @MockitoBean private LeaveSessionHandler leaveSessionHandler;
     @MockitoBean private AddBuyInHandler addBuyInHandler;
     @MockitoBean private AddCashOutHandler addCashOutHandler;
     @MockitoBean private RemovePlayerHandler removePlayerHandler;
@@ -79,7 +87,8 @@ class SessionControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", "/api/sessions/session-abc"))
-                .andExpect(jsonPath("$.sessionId").value("session-abc"));
+                .andExpect(jsonPath("$.sessionId").value("session-abc"))
+                .andExpect(jsonPath("$.inviteCode").value(org.hamcrest.Matchers.matchesRegex("[A-HJ-NP-Z2-9]{12}")));
 
         verify(createSessionHandler).handle(argThat(cmd ->
                 cmd.sessionId().equals("session-abc") && cmd.hostId().equals(CURRENT_USER_ID)));
@@ -136,6 +145,85 @@ class SessionControllerTest {
                                 {"displayName":"Raj","linkedUserId":null}
                                 """))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void playerCanLeaveTheirOwnSession() throws Exception {
+        mockAsCurrentUser("player-user");
+
+        mockMvc.perform(delete("/api/sessions/session-abc/players/me"))
+                .andExpect(status().isNoContent());
+
+        verify(leaveSessionHandler).handle(new LeaveSessionCommand("session-abc", "player-user"));
+    }
+
+    @Test
+    void sessionCardStatusShowsWhenCurrentUserIsNoLongerInSession() throws Exception {
+        mockAsCurrentUser("player-user");
+        SessionProjection projection = SessionProjection.builder()
+                        .sessionId("session-abc")
+                        .sessionName("Friday game")
+                        .hostId("host-user")
+                        .status("ACTIVE")
+                        .players(List.of(PlayerProjection.builder()
+                                .playerId("player-1")
+                                .userId("player-user")
+                                .status("INACTIVE")
+                                .build()))
+                        .build();
+        when(sessionProjectionRepository.findByHostIdOrPlayersUserId(eq("player-user"), eq("player-user"), any()))
+                .thenReturn(new PageImpl<>(List.of(projection), PageRequest.of(0, 12), 1));
+
+        mockMvc.perform(get("/api/sessions").param("page", "0").param("size", "12"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].currentUserStatus").value("NOT_IN_SESSION"))
+                .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
+    void joinsActiveSessionUsingInviteCode() throws Exception {
+        mockAsCurrentUser(CURRENT_USER_ID);
+        when(sessionProjectionRepository.findByInviteCodeIgnoreCase("ABCD23456789"))
+                .thenReturn(Optional.of(SessionProjection.builder()
+                        .sessionId("session-abc")
+                        .status("ACTIVE")
+                        .build()));
+        when(userRepository.findById(CURRENT_USER_ID)).thenReturn(Optional.of(
+                User.builder().id(CURRENT_USER_ID).username("host-user").build()));
+        when(joinSessionHandler.handle(any())).thenReturn("player-abc");
+
+        mockMvc.perform(post("/api/sessions/join")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"inviteCode\":\"abcd23456789\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sessionId").value("session-abc"));
+
+        verify(joinSessionHandler).handle(argThat(command ->
+                command.sessionId().equals("session-abc")
+                        && command.userId().equals(CURRENT_USER_ID)
+                        && command.username().equals("host-user")));
+    }
+
+    @Test
+    void existingPlayerSearchIncludesTheHostAccount() throws Exception {
+        mockAsCurrentUser(CURRENT_USER_ID);
+        when(sessionProjectionRepository.findById("session-abc")).thenReturn(Optional.of(
+                SessionProjection.builder()
+                        .sessionId("session-abc")
+                        .hostId(CURRENT_USER_ID)
+                        .status("ACTIVE")
+                        .build()));
+        User host = User.builder().id(CURRENT_USER_ID).username("host-user").build();
+        when(userRepository.findByUsernameIgnoreCase("host-user")).thenReturn(Optional.of(host));
+        when(userRepository.findTop10ByUsernameContainingIgnoreCaseOrderByUsernameAsc("host-user"))
+                .thenReturn(List.of(host));
+
+        mockMvc.perform(get("/api/sessions/session-abc/player-candidates").param("query", "host-user"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].userId").value(CURRENT_USER_ID))
+                .andExpect(jsonPath("$[0].username").value("host-user"));
     }
 
 

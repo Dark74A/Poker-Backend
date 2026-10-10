@@ -7,6 +7,7 @@ public record SessionResponse(
         String sessionId,
         String sessionName,
         String hostId,
+        String inviteCode,
         String status,
         List<PlayerResponse> players,
         BigDecimal totalBuyIns,

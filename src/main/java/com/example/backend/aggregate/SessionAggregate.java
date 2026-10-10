@@ -25,6 +25,7 @@ public class SessionAggregate {
     private String hostId;
     private String name;
     private String description;
+    private String inviteCode;
 
     private Map<String, Player> players = new HashMap<>();
     private long version;
@@ -88,6 +89,7 @@ public class SessionAggregate {
         payload.put("hostId", cmd.hostId());
         payload.put("name", cmd.name());
         payload.put("description", cmd.description());
+        payload.put("inviteCode", cmd.inviteCode());
         raise(
                 new DomainEvent(
                         UUID.randomUUID().toString(),
@@ -158,6 +160,34 @@ public class SessionAggregate {
                 )
         );
 
+        return playerId;
+    }
+
+    public String handle(JoinSessionCommand cmd) {
+        if (id == null) {
+            throw new SessionNotFoundException("Session does not exist.");
+        }
+        if (status != SessionStatus.ACTIVE) {
+            throw new InvalidSessionStateException("Session is " + status.name().toLowerCase() + ".");
+        }
+
+        Player existingPlayer = players.values().stream()
+                .filter(player -> cmd.userId().equals(player.userId()))
+                .findFirst()
+                .orElse(null);
+        if (existingPlayer != null && existingPlayer.status() == PlayerStatus.ACTIVE) {
+            throw new InvalidSessionStateException("You are already a player in this session.");
+        }
+
+        String playerId = existingPlayer == null ? UUID.randomUUID().toString() : existingPlayer.playerId();
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("playerId", playerId);
+        payload.put("linkedUserId", cmd.userId());
+        payload.put("displayName", existingPlayer == null ? cmd.username() : existingPlayer.displayName());
+        if (existingPlayer != null) payload.put("rejoin", true);
+
+        raise(new DomainEvent(UUID.randomUUID().toString(), id, "SESSION", version + 1,
+                Instant.now(), PLAYER_ADDED, cmd.userId(), payload, Map.of()));
         return playerId;
     }
 
@@ -474,6 +504,31 @@ public class SessionAggregate {
         );
     }
 
+    public void handle(LeaveSessionCommand cmd) {
+        if (id == null) {
+            throw new SessionNotFoundException("Session does not exist.");
+        }
+        if (status != SessionStatus.ACTIVE) {
+            throw new InvalidSessionStateException("Session is " + status.name().toLowerCase() + ".");
+        }
+
+        Player player = players.values().stream()
+                .filter(candidate -> cmd.userId().equals(candidate.userId()))
+                .findFirst()
+                .orElseThrow(() -> new PlayerNotFoundException("You are not a player in this session."));
+        if (player.status() == PlayerStatus.INACTIVE) {
+            throw new InvalidSessionStateException("You have already left this session.");
+        }
+        if (player.chipStack().compareTo(BigDecimal.ZERO) != 0) {
+            throw new ValidationException("You cannot leave while your stack is not empty. Cash out first.");
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("playerId", player.playerId());
+        raise(new DomainEvent(UUID.randomUUID().toString(), id, "SESSION", 0, Instant.now(),
+                EventType.PLAYER_REMOVED, cmd.userId(), payload, Map.of()));
+    }
+
     private void raise(DomainEvent event) {
         apply(event);
         uncommittedEvents.add(event);
@@ -489,6 +544,7 @@ public class SessionAggregate {
                 this.status = SessionStatus.ACTIVE;
                 this.name = (String) event.getPayload().get("name");
                 this.description = (String) event.getPayload().get("description");
+                this.inviteCode = (String) event.getPayload().get("inviteCode");
             }
 
             case PLAYER_ADDED -> {
